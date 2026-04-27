@@ -1,0 +1,30 @@
+# .specs/config.yaml — project-wide spec workflow config (free-form, agent-interpreted)
+#
+# This file is read at the start of every spec workflow action (brainstorm,
+# spec init, status, validate, task check, implementation). Edits take effect
+# on the next action. The schema is intentionally free-form: any keys you add
+# are surfaced to the spec agent as project context.
+
+project:
+  goal: "Spec-driven development extension and resource package for Pi: tools, slash commands, prompts, skills, and templates that enforce a brainstorm → requirements → design → tasks → implementation workflow under .specs/."
+  tech_stack:
+    - "TypeScript (Node.js, ESM)"
+    - "Pi coding-agent extension API (@mariozechner/pi-ai, @mariozechner/pi-coding-agent)"
+    - "typebox (tool input schemas)"
+    - "yaml (config + frontmatter parsing)"
+    - "pnpm 10 (package manager)"
+
+principles:
+  tdd: false # no test suite in this repo; rely on typecheck + manual extension reload
+  no_comments: false # keep comments where they clarify spec workflow semantics
+  spec_first: true # never edit requirements/design/tasks without a brainstorm.md gate
+  templates_are_source_of_truth: true # generated spec files must come from templates/, not ad-hoc text
+  preserve_traceability: true # requirement IDs (R-NNN) must flow into design and tasks (T-NNN)
+  minimal_surface: true # add tools/commands/skills only when the spec workflow needs them
+
+hooks:
+  after_task:
+    - command: "pnpm typecheck"
+      auto: true # run tsc --noEmit after each task to catch extension/tool type drift
+    - command: "pnpm pack:dry"
+      auto: false # remind the user to verify the published file set before releasing
