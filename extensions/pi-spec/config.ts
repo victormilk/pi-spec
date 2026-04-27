@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(extensionDir, "..", "..");
@@ -324,6 +324,72 @@ function indent(text: string, prefix: string): string {
  * Render free-form config as a context block injected into agent prompts.
  * Empty config returns undefined (no block).
  */
+/**
+ * Read `principles.tdd` as a boolean. Returns undefined if unset or malformed.
+ */
+export function readTddPrinciple(
+	config: Record<string, unknown>,
+): boolean | undefined {
+	const principles = config.principles;
+	if (
+		!principles ||
+		typeof principles !== "object" ||
+		Array.isArray(principles)
+	)
+		return undefined;
+	const value = (principles as Record<string, unknown>).tdd;
+	return typeof value === "boolean" ? value : undefined;
+}
+
+/**
+ * Set `principles.tdd` in .specs/config.yaml. Preserves comments and ordering
+ * when the existing `tdd:` line can be found; otherwise rewrites the file from
+ * the parsed config (losing comments, but keeping data).
+ */
+export async function setTddPrinciple(
+	projectRoot: string,
+	enabled: boolean,
+): Promise<{ path: string; updated: boolean }> {
+	const path = configPath(projectRoot);
+	if (!existsSync(path)) {
+		await scaffoldSpecConfig(path);
+	}
+	const raw = await readFile(path, "utf8");
+	const tddLine = /^([ \t]*)tdd:[ \t]*(?:true|false)([ \t]*(?:#.*)?)$/m;
+	if (tddLine.test(raw)) {
+		const next = raw.replace(
+			tddLine,
+			(_match, indent: string, trailing: string) =>
+				`${indent}tdd: ${enabled ? "true" : "false"}${trailing ?? ""}`,
+		);
+		if (next !== raw) {
+			await writeFile(path, next, "utf8");
+			return { path, updated: true };
+		}
+		return { path, updated: false };
+	}
+
+	let parsed: Record<string, unknown> = {};
+	try {
+		const maybe = parseYaml(raw) as unknown;
+		if (maybe && typeof maybe === "object" && !Array.isArray(maybe)) {
+			parsed = maybe as Record<string, unknown>;
+		}
+	} catch {
+		parsed = {};
+	}
+	const principles =
+		parsed.principles &&
+		typeof parsed.principles === "object" &&
+		!Array.isArray(parsed.principles)
+			? (parsed.principles as Record<string, unknown>)
+			: {};
+	principles.tdd = enabled;
+	parsed.principles = principles;
+	await writeFile(path, stringifyYaml(parsed), "utf8");
+	return { path, updated: true };
+}
+
 export function formatConfigContext(
 	config: Record<string, unknown>,
 ): string | undefined {

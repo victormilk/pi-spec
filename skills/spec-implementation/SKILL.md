@@ -33,6 +33,7 @@ Run `spec_validate` with `phase: "implementation"` first if available.
 - Do not mark a task complete until implementation and validation are done.
 - If code reality conflicts with design, update `design.md` and explain the deviation before continuing.
 - Preserve requirement traceability in code comments, tests, or docs when helpful, but do not over-comment obvious code.
+- If `.specs/config.yaml` has `principles.tdd: true`, follow the bundled `tdd` skill and produce each task via red → green → refactor on a vertical slice (one test → one implementation, never all-tests-then-all-code).
 
 ## Updating Tasks
 

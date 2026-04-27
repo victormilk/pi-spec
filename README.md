@@ -77,6 +77,7 @@ Bundled skills are loaded dynamically by the extension:
 - `spec-review`
 - `spec-templates`
 - `spec-agents`
+- `tdd` (loaded when `principles.tdd: true` in `.specs/config.yaml`; adapted from https://github.com/mattpocock/skills/tree/main/tdd)
 
 ## Generated File Templates
 

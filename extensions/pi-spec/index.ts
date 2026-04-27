@@ -20,7 +20,9 @@ import {
 	formatConfigWarnings,
 	formatHookResults,
 	loadSpecConfig,
+	readTddPrinciple,
 	runAfterTaskHooks,
+	setTddPrinciple,
 } from "./config.ts";
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
@@ -757,6 +759,11 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 		const sections = [
 			`[PI SPEC CONTEXT]\nUse project-layer specs in ${SPEC_ROOT}/<feature>/ with brainstorm.md, requirements.md, design.md, and tasks.md. Brainstorm is a required gate before spec creation: identify user intent, ask one question at a time, propose an approach, and only then create requirements/design/tasks. Keep implementation traceable to checked tasks and requirement IDs. Before implementing, verify tasks.md is explicitly approved by the user and no longer tasks-draft (run spec_validate with phase: "implementation"). Use the bundled spec skills when the request is about creating, refining, or implementing a spec.`,
 		];
+		if (readTddPrinciple(loaded.config) === true) {
+			sections.push(
+				`[PI SPEC TDD]\nThis project has principles.tdd: true in ${SPEC_ROOT}/${"config.yaml"}. When implementing tasks from ${SPEC_ROOT}/<feature>/tasks.md, load the bundled \`tdd\` skill and drive each task with vertical red → green → refactor slices: write one failing test, write minimal code to pass, then refactor. Do not write all tests up front. Tests must verify behavior through the public interface, not implementation details.`,
+			);
+		}
 		const warningsText = formatConfigWarnings(loaded.warnings);
 		if (warningsText) sections.push(warningsText);
 		const contextText = formatConfigContext(loaded.config);
@@ -1027,7 +1034,7 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("spec-init", {
 		description: `Create ${SPEC_ROOT}/<feature>/ requirements/design/tasks templates after brainstorm`,
 		handler: async (args, ctx) => {
-			await loadSpecConfig(ctx.cwd);
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const rawName =
 				args.trim() ||
 				(ctx.hasUI
@@ -1053,13 +1060,30 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
+			let tddNotice: string | undefined;
+			if (ctx.hasUI && readTddPrinciple(loaded.config) === undefined) {
+				const enabled = await ctx.ui.confirm(
+					"TDD first?",
+					"Implement spec tasks test-first using red → green → refactor? When enabled, the bundled `tdd` skill guides each task.",
+				);
+				const { path } = await setTddPrinciple(ctx.cwd, enabled);
+				tddNotice = enabled
+					? `TDD enabled in ${relative(ctx.cwd, path)} (principles.tdd: true). The \`tdd\` skill will guide implementation.`
+					: `TDD disabled in ${relative(ctx.cwd, path)} (principles.tdd: false).`;
+			}
+
 			const result = await initializeSpec(ctx.cwd, { name: rawName });
-			const summary = [
+			const lines = [
 				`Initialized ${result.slug} at ${result.dir}/`,
 				...result.files.map((file) => `- ${file}`),
-			].join("\n");
+			];
+			if (tddNotice) lines.push("", tddNotice);
 			pi.sendMessage(
-				{ customType: "pi-spec-init", content: summary, display: true },
+				{
+					customType: "pi-spec-init",
+					content: lines.join("\n"),
+					display: true,
+				},
 				{ triggerTurn: false },
 			);
 			if (ctx.hasUI) ctx.ui.setEditorText(`/spec-requirements ${result.slug}`);
