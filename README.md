@@ -42,6 +42,7 @@ The extension registers these LLM-callable tools:
 - `spec_init` — create `.specs/<slug>/requirements.md`, `design.md`, and `tasks.md` from bundled templates after brainstorming.
 - `spec_status` — list specs, generated files, and task progress.
 - `spec_validate` — check a spec for core SDD completeness and traceability; pass `phase: "implementation"` before coding to ensure `tasks.md` is no longer draft.
+- `spec_task_check` — mark a `tasks.md` task `[x]` (or revert with `uncheck: true`) by its `ID: T-NNN`. Refuses while `Status:` is `tasks-draft`, advances the status from `tasks-approved` → `implementation-in-progress` on the first check, and → `implementation-complete` once all tasks are done.
 
 ## Slash Commands
 

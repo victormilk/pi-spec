@@ -12,16 +12,19 @@ Design: `./design.md`
 Only include implementation tasks after requirements and design are accepted. Keep tasks small, ordered, and traceable.
 
 - [ ] 1. TODO: Prepare implementation foundation
+  - ID: T-001
   - Requirement(s): FR-001
   - Files/areas: TODO
   - Validation: TODO
 
 - [ ] 2. TODO: Implement core behavior
+  - ID: T-002
   - Requirement(s): FR-001, FR-002
   - Files/areas: TODO
   - Validation: TODO
 
 - [ ] 3. TODO: Add tests and documentation
+  - ID: T-003
   - Requirement(s): FR-001, FR-002, NFR-001
   - Files/areas: TODO
   - Validation: TODO

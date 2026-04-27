@@ -120,6 +120,22 @@ const SpecValidateParamsSchema = Type.Object({
 
 type SpecValidateParams = Static<typeof SpecValidateParamsSchema>;
 
+const SpecTaskCheckParamsSchema = Type.Object({
+	spec: Type.String({ description: "Spec slug or `.specs/<slug>` path." }),
+	id: Type.String({
+		description:
+			"Task identifier as written in tasks.md, e.g. `T-001`. Case-insensitive.",
+	}),
+	uncheck: Type.Optional(
+		Type.Boolean({
+			description:
+				"Set true to flip an `[x]` task back to `[ ]`. Default: false.",
+		}),
+	),
+});
+
+type SpecTaskCheckParams = Static<typeof SpecTaskCheckParamsSchema>;
+
 function specRoot(cwd: string): string {
 	return join(cwd, SPEC_ROOT);
 }
@@ -393,6 +409,176 @@ async function initializeSpec(
 	}
 
 	return { slug, dir: relative(cwd, dir), files: generated, skipped };
+}
+
+interface TaskBlock {
+	id: string;
+	lineIndex: number; // 0-based line index of the parent `- [ ] N. ...` line
+	checked: boolean;
+}
+
+function parseTaskBlocks(markdown: string): TaskBlock[] {
+	const lines = markdown.split(/\r?\n/);
+	const parentRe = /^(\s*)-\s+\[([ xX])\]\s+(.*)$/;
+	const idRe = /^\s*(?:-\s+)?ID:\s*(T-\d{3,})\s*$/i;
+	const headingRe = /^#{1,6}\s/;
+
+	const blocks: TaskBlock[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		const parent = lines[i].match(parentRe);
+		if (!parent) continue;
+		const parentIndent = parent[1].length;
+		const checked = parent[2].toLowerCase() === "x";
+		let id: string | undefined;
+		for (let j = i + 1; j < lines.length; j++) {
+			const line = lines[j];
+			if (line.trim() === "") break;
+			if (headingRe.test(line)) break;
+			const nextParent = line.match(parentRe);
+			if (nextParent && nextParent[1].length <= parentIndent) break;
+			const idMatch = line.match(idRe);
+			if (idMatch) {
+				id = idMatch[1].toUpperCase();
+				break;
+			}
+		}
+		if (id) blocks.push({ id, lineIndex: i, checked });
+	}
+	return blocks;
+}
+
+function setCheckboxOnLine(line: string, checked: boolean): string {
+	return line.replace(
+		/^(\s*-\s+)\[([ xX])\](\s)/,
+		(_match, prefix, _state, suffix) =>
+			`${prefix}[${checked ? "x" : " "}]${suffix}`,
+	);
+}
+
+function setStatusLine(markdown: string, newStatus: string): string {
+	if (/^Status:\s*.+$/m.test(markdown)) {
+		return markdown.replace(/^Status:\s*.+$/m, `Status: ${newStatus}`);
+	}
+	const lines = markdown.split(/\r?\n/);
+	const headingIdx = lines.findIndex((l) => /^#\s+/.test(l));
+	if (headingIdx >= 0) {
+		lines.splice(headingIdx + 1, 0, "", `Status: ${newStatus}`);
+		return lines.join("\n");
+	}
+	return `Status: ${newStatus}\n${markdown}`;
+}
+
+function nextStatusAfterCheck(
+	prevStatus: string,
+	doneCount: number,
+	totalCount: number,
+	nowChecked: boolean,
+): string | undefined {
+	const trimmed = prevStatus.trim();
+	if (nowChecked) {
+		if (totalCount > 0 && doneCount === totalCount) {
+			return trimmed === "implementation-complete"
+				? undefined
+				: "implementation-complete";
+		}
+		if (trimmed === "tasks-approved") return "implementation-in-progress";
+		return undefined;
+	}
+	if (trimmed === "implementation-complete")
+		return "implementation-in-progress";
+	return undefined;
+}
+
+interface TaskCheckResult {
+	slug: string;
+	id: string;
+	changed: boolean;
+	previous: "[ ]" | "[x]";
+	current: "[ ]" | "[x]";
+	status: { previous: string; current: string };
+	refusal?: string;
+}
+
+async function applyTaskCheck(
+	cwd: string,
+	params: SpecTaskCheckParams,
+): Promise<TaskCheckResult> {
+	const { slug, dir } = resolveSpecDir(cwd, params.spec);
+	const tasksPath = join(dir, "tasks.md");
+	const targetId = params.id.trim().toUpperCase();
+	const wantChecked = !params.uncheck;
+
+	const result: TaskCheckResult = {
+		slug,
+		id: targetId,
+		changed: false,
+		previous: "[ ]",
+		current: "[ ]",
+		status: { previous: "missing", current: "missing" },
+	};
+
+	await withFileMutationQueue(tasksPath, async () => {
+		const markdown = await readIfExists(tasksPath);
+		if (markdown === undefined) {
+			result.refusal = `tasks.md not found for spec '${slug}'. Run spec_init ${slug} first.`;
+			return;
+		}
+
+		const prevStatus = extractStatus(markdown);
+		result.status.previous = prevStatus;
+		result.status.current = prevStatus;
+
+		if (isDraftStatus(prevStatus)) {
+			result.refusal = `tasks.md is still '${prevStatus}'. Get explicit user approval and set Status to 'tasks-approved' before checking tasks.`;
+			return;
+		}
+
+		const blocks = parseTaskBlocks(markdown);
+		const matches = blocks.filter((b) => b.id === targetId);
+		if (matches.length === 0) {
+			const known = blocks.map((b) => b.id).join(", ") || "(none)";
+			result.refusal = `Task id '${targetId}' not found in ${SPEC_ROOT}/${slug}/tasks.md. Known IDs: ${known}.`;
+			return;
+		}
+		if (matches.length > 1) {
+			const lineList = matches.map((b) => `line ${b.lineIndex + 1}`).join(", ");
+			result.refusal = `Task id '${targetId}' is ambiguous; declared on ${lineList}. Make IDs unique before calling spec_task_check.`;
+			return;
+		}
+
+		const block = matches[0];
+		result.previous = block.checked ? "[x]" : "[ ]";
+		result.current = result.previous;
+
+		if (block.checked === wantChecked) {
+			return; // idempotent
+		}
+
+		const lines = markdown.split(/\r?\n/);
+		lines[block.lineIndex] = setCheckboxOnLine(
+			lines[block.lineIndex],
+			wantChecked,
+		);
+		let updated = lines.join("\n");
+
+		const counts = countTasks(updated);
+		const nextStatus = nextStatusAfterCheck(
+			prevStatus,
+			counts.done,
+			counts.total,
+			wantChecked,
+		);
+		if (nextStatus && nextStatus !== prevStatus.trim()) {
+			updated = setStatusLine(updated, nextStatus);
+			result.status.current = nextStatus;
+		}
+
+		await writeFile(tasksPath, updated, "utf8");
+		result.changed = true;
+		result.current = wantChecked ? "[x]" : "[ ]";
+	});
+
+	return result;
 }
 
 async function validateSpec(
@@ -721,6 +907,50 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			return {
 				content: [{ type: "text", text }],
 				details: { spec: normalizeSlug(params.spec), phase },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "spec_task_check",
+		label: "Spec Task Check",
+		description: `Mark a task in ${SPEC_ROOT}/<slug>/tasks.md as complete (or revert with uncheck) by its \`ID: T-NNN\`. Refuses while Status is tasks-draft, advances Status from tasks-approved → implementation-in-progress on first check and → implementation-complete when all tasks are done.`,
+		promptSnippet: `After completing each implementation task, call spec_task_check to mark it [x] by its ID.`,
+		promptGuidelines: [
+			"Call spec_task_check immediately after a task's validation passes; do not batch checks.",
+			"Reference the task by the `ID: T-NNN` line under it, not by ordinal number.",
+			"If the tool refuses (tasks-draft, missing/ambiguous ID), surface the refusal to the user instead of editing tasks.md by hand.",
+		],
+		parameters: SpecTaskCheckParamsSchema,
+		async execute(
+			_toolCallId,
+			params: SpecTaskCheckParams,
+			_signal,
+			_onUpdate,
+			ctx,
+		) {
+			const result = await applyTaskCheck(ctx.cwd, params);
+			await updateSpecStatus(ctx);
+			if (result.refusal) {
+				return {
+					content: [{ type: "text", text: result.refusal }],
+					details: result,
+				};
+			}
+			const lines = [
+				`${result.changed ? "Updated" : "No change"}: ${result.slug} ${result.id}`,
+				`Checkbox: ${result.previous} → ${result.current}`,
+			];
+			if (result.status.previous !== result.status.current) {
+				lines.push(
+					`Status: ${result.status.previous} → ${result.status.current}`,
+				);
+			} else {
+				lines.push(`Status: ${result.status.current}`);
+			}
+			return {
+				content: [{ type: "text", text: lines.join("\n") }],
+				details: result,
 			};
 		},
 	});
