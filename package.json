@@ -1,0 +1,45 @@
+{
+	"name": "pi-spec",
+	"version": "0.1.0",
+	"description": "Spec-driven development extension and resource package for Pi.",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"spec-driven-development",
+		"sdd"
+	],
+	"author": "victormilk",
+	"license": "MIT",
+	"type": "module",
+	"packageManager": "pnpm@10.33.2",
+	"files": [
+		"agents",
+		"extensions",
+		"prompts",
+		"skills",
+		"templates",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"pack:dry": "pnpm pack --dry-run"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/pi-spec/index.ts"
+		]
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-ai": "*",
+		"@mariozechner/pi-coding-agent": "*",
+		"typebox": "*"
+	},
+	"devDependencies": {
+		"@mariozechner/pi-ai": "^0.70.2",
+		"@mariozechner/pi-coding-agent": "^0.70.2",
+		"@types/node": "^24.3.0",
+		"typebox": "^1.1.24",
+		"typescript": "^5.7.3"
+	}
+}
