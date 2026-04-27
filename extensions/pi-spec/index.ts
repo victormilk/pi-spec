@@ -14,6 +14,14 @@ import {
 	withFileMutationQueue,
 } from "@mariozechner/pi-coding-agent";
 import { type Static, Type } from "typebox";
+import {
+	extractAfterTaskHooks,
+	formatConfigContext,
+	formatConfigWarnings,
+	formatHookResults,
+	loadSpecConfig,
+	runAfterTaskHooks,
+} from "./config.ts";
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(extensionDir, "..", "..");
@@ -743,13 +751,21 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 		await updateSpecStatus(ctx);
 	});
 
-	pi.on("before_agent_start", async (event) => {
+	pi.on("before_agent_start", async (event, ctx) => {
 		if (!shouldInjectSpecContext(event.prompt)) return;
+		const loaded = await loadSpecConfig(ctx.cwd);
+		const sections = [
+			`[PI SPEC CONTEXT]\nUse project-layer specs in ${SPEC_ROOT}/<feature>/ with brainstorm.md, requirements.md, design.md, and tasks.md. Brainstorm is a required gate before spec creation: identify user intent, ask one question at a time, propose an approach, and only then create requirements/design/tasks. Keep implementation traceable to checked tasks and requirement IDs. Before implementing, verify tasks.md is explicitly approved by the user and no longer tasks-draft (run spec_validate with phase: "implementation"). Use the bundled spec skills when the request is about creating, refining, or implementing a spec.`,
+		];
+		const warningsText = formatConfigWarnings(loaded.warnings);
+		if (warningsText) sections.push(warningsText);
+		const contextText = formatConfigContext(loaded.config);
+		if (contextText) sections.push(contextText);
 		return {
 			message: {
 				customType: "pi-spec-context",
 				display: false,
-				content: `[PI SPEC CONTEXT]\nUse project-layer specs in ${SPEC_ROOT}/<feature>/ with brainstorm.md, requirements.md, design.md, and tasks.md. Brainstorm is a required gate before spec creation: identify user intent, ask one question at a time, propose an approach, and only then create requirements/design/tasks. Keep implementation traceable to checked tasks and requirement IDs. Before implementing, verify tasks.md is explicitly approved by the user and no longer tasks-draft (run spec_validate with phase: "implementation"). Use the bundled spec skills when the request is about creating, refining, or implementing a spec.`,
+				content: sections.join("\n\n"),
 			},
 		};
 	});
@@ -771,6 +787,7 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			_onUpdate,
 			ctx,
 		) {
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const result = await recordBrainstorm(ctx.cwd, params);
 			await updateSpecStatus(ctx);
 			const lines = [
@@ -785,9 +802,11 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			lines.push(
 				"Next: create the spec skeleton with spec_init, then draft requirements.md.",
 			);
+			const warningsText = formatConfigWarnings(loaded.warnings);
+			if (warningsText) lines.push(warningsText);
 			return {
 				content: [{ type: "text", text: lines.join("\n\n") }],
-				details: result,
+				details: { ...result, config: loaded.config },
 			};
 		},
 	});
@@ -809,6 +828,7 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			_onUpdate,
 			ctx,
 		) {
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const slug = normalizeSlug(params.name);
 			if (!hasBrainstorm(ctx.cwd, slug)) {
 				if (!params.brainstormSummary?.trim()) {
@@ -850,9 +870,11 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			lines.push(
 				"Next: draft requirements.md, get approval, then create design.md and tasks.md.",
 			);
+			const warningsText = formatConfigWarnings(loaded.warnings);
+			if (warningsText) lines.push(warningsText);
 			return {
 				content: [{ type: "text", text: lines.join("\n\n") }],
-				details: result,
+				details: { ...result, config: loaded.config },
 			};
 		},
 	});
@@ -873,14 +895,17 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			_onUpdate,
 			ctx,
 		) {
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const specs = await summarizeSpecs(ctx.cwd, params.spec);
 			const summary = formatSpecSummary(specs);
-			const content = params.includeContent
+			const body = params.includeContent
 				? `${summary}\n${await includeSpecContents(ctx.cwd, specs)}`
 				: summary;
+			const warningsText = formatConfigWarnings(loaded.warnings);
+			const content = warningsText ? `${warningsText}\n\n${body}` : body;
 			return {
 				content: [{ type: "text", text: truncateForTool(content) }],
-				details: { specs },
+				details: { specs, config: loaded.config },
 			};
 		},
 	});
@@ -902,11 +927,18 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			_onUpdate,
 			ctx,
 		) {
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const phase = params.phase ?? "structure";
 			const text = await validateSpec(ctx.cwd, params.spec, phase);
+			const warningsText = formatConfigWarnings(loaded.warnings);
+			const content = warningsText ? `${warningsText}\n\n${text}` : text;
 			return {
-				content: [{ type: "text", text }],
-				details: { spec: normalizeSlug(params.spec), phase },
+				content: [{ type: "text", text: content }],
+				details: {
+					spec: normalizeSlug(params.spec),
+					phase,
+					config: loaded.config,
+				},
 			};
 		},
 	});
@@ -929,11 +961,16 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			_onUpdate,
 			ctx,
 		) {
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const result = await applyTaskCheck(ctx.cwd, params);
 			await updateSpecStatus(ctx);
 			if (result.refusal) {
+				const warningsText = formatConfigWarnings(loaded.warnings);
+				const text = warningsText
+					? `${warningsText}\n\n${result.refusal}`
+					: result.refusal;
 				return {
-					content: [{ type: "text", text: result.refusal }],
+					content: [{ type: "text", text }],
 					details: result,
 				};
 			}
@@ -948,9 +985,25 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 			} else {
 				lines.push(`Status: ${result.status.current}`);
 			}
+			let hookResults: Awaited<ReturnType<typeof runAfterTaskHooks>> = [];
+			let hookExtractWarnings: ReturnType<
+				typeof extractAfterTaskHooks
+			>["warnings"] = [];
+			if (result.changed && !params.uncheck) {
+				const extracted = extractAfterTaskHooks(loaded.config, loaded.path);
+				hookExtractWarnings = extracted.warnings;
+				hookResults = await runAfterTaskHooks(extracted.hooks, ctx.cwd);
+			}
+			const warningsText = formatConfigWarnings([
+				...loaded.warnings,
+				...hookExtractWarnings,
+			]);
+			if (warningsText) lines.push(warningsText);
+			const hooksText = formatHookResults(hookResults);
+			if (hooksText) lines.push(hooksText);
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
-				details: result,
+				details: { ...result, hooks: hookResults, config: loaded.config },
 			};
 		},
 	});
@@ -958,10 +1011,13 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("specs", {
 		description: `Show ${SPEC_ROOT}/ spec status`,
 		handler: async (_args, ctx) => {
+			const loaded = await loadSpecConfig(ctx.cwd);
 			const specs = await summarizeSpecs(ctx.cwd);
 			const summary = formatSpecSummary(specs);
+			const warningsText = formatConfigWarnings(loaded.warnings);
+			const content = warningsText ? `${warningsText}\n\n${summary}` : summary;
 			pi.sendMessage(
-				{ customType: "pi-spec-status", content: summary, display: true },
+				{ customType: "pi-spec-status", content, display: true },
 				{ triggerTurn: false },
 			);
 			await updateSpecStatus(ctx);
@@ -971,6 +1027,7 @@ export default function piSpecExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("spec-init", {
 		description: `Create ${SPEC_ROOT}/<feature>/ requirements/design/tasks templates after brainstorm`,
 		handler: async (args, ctx) => {
+			await loadSpecConfig(ctx.cwd);
 			const rawName =
 				args.trim() ||
 				(ctx.hasUI
