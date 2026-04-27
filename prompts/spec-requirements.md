@@ -18,3 +18,6 @@ Tasks:
 - Ensure scope, user stories, functional requirements, non-functional requirements, acceptance criteria, edge cases, dependencies, and open questions are covered.
 - Use EARS-style `SHALL` statements.
 - Do not edit design.md, tasks.md, or implementation files in this step unless explicitly requested.
+- Leave `Status: requirements-draft` while the file is awaiting review.
+- Stop after drafting and ask the user to explicitly approve `requirements.md`. Do **not** continue into design.md in the same turn.
+- When the user explicitly approves, update the `Status:` line in `requirements.md` to `requirements-approved`, then ask whether to start `design.md`. Treat a single "approved" reply as approval for requirements only — not for design or tasks.

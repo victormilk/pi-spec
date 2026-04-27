@@ -57,6 +57,13 @@ Typical order:
 5. Tests
 6. Docs/migration/cleanup
 
+## Approval Gate
+
+- Only start tasks when `design.md` is `Status: design-approved`. If it is still `design-draft`, stop and ask the user to approve the design first.
+- Keep `tasks.md` at `Status: tasks-draft` while awaiting review.
+- After drafting tasks, stop and ask the user to explicitly approve the task plan. Do **not** start implementation in the same turn.
+- When the user explicitly approves the task plan, update the `Status:` line in `tasks.md` to `tasks-approved`, then run `spec_validate` with `phase: "implementation"`. Only then may implementation begin.
+
 ## Done Criteria
 
 Before asking for implementation approval:

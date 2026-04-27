@@ -16,4 +16,8 @@ Tasks:
 - Cover architecture, data/API/UI changes, error handling, security/privacy, testing strategy, rollout/migration, risks, and alternatives.
 - Add a requirements traceability table covering every `FR-*` and `NFR-*`.
 - Do not implement code yet.
+- Refuse to draft design.md while `requirements.md` is `Status: requirements-draft`. Ask the user to approve requirements first and update its `Status:` to `requirements-approved`.
+- Leave `Status: design-draft` while the file is awaiting review.
+- Stop after drafting and ask the user to explicitly approve `design.md`. Do **not** continue into tasks.md in the same turn.
+- When the user explicitly approves, update the `Status:` line in `design.md` to `design-approved`, then ask whether to start `tasks.md`. Treat a single "approved" reply as approval for design only — not for tasks or implementation.
 - End with any design risks and the next gate: task planning.

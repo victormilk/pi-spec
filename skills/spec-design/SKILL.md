@@ -51,6 +51,13 @@ Every `FR-*` and `NFR-*` from requirements must appear in `Requirements Traceabi
 
 If a requirement is not feasible, do not silently drop it. Mark it as blocked or propose a requirement change.
 
+## Approval Gate
+
+- Only start design when `requirements.md` is `Status: requirements-approved`. If it is still `requirements-draft`, stop and ask the user to approve requirements first.
+- Keep `design.md` at `Status: design-draft` while awaiting review.
+- After drafting design, stop and ask the user to explicitly approve `design.md`. Do **not** also draft `tasks.md` in the same turn, and do not treat a generic "approved" reply as approval for tasks.
+- When the user explicitly approves the design, update the `Status:` line in `design.md` to `design-approved`, summarize what changed, and ask whether to start `tasks.md`. Only then is the tasks gate unlocked.
+
 ## Done Criteria
 
 Before moving to tasks:
@@ -59,3 +66,4 @@ Before moving to tasks:
 - Risky assumptions are explicit
 - Testing strategy is concrete enough to become tasks
 - Implementation boundaries are clear enough for a coding agent to execute
+- `design.md` Status is `design-approved`

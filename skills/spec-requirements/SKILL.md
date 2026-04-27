@@ -61,4 +61,9 @@ If the user wants speed, document assumptions in `Open Questions` and label them
 
 ## Done Criteria
 
-Before moving to design, ensure every requirement is testable and every open question is either answered, deferred, or called out as an implementation risk.
+Before moving to design:
+
+- Every requirement is testable and every open question is answered, deferred, or called out as an implementation risk.
+- `requirements.md` keeps `Status: requirements-draft` while awaiting review.
+- Stop after drafting and ask the user to explicitly approve `requirements.md`. Do **not** also draft `design.md` in the same turn, and do not treat a generic "approved" reply as approval for design or tasks.
+- When the user explicitly approves requirements, update the `Status:` line in `requirements.md` to `requirements-approved`, summarize what changed, and ask whether to start `design.md`. Only then is the design gate unlocked.
