@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-driven development with the red-green-refactor loop. Use when the project has `principles.tdd: true` in `.specs/config.yaml`, when implementing tasks from `.specs/<feature>/tasks.md`, or when the user mentions TDD, red-green-refactor, test-first, or integration-style tests. Adapted from Matt Pocock's TDD skill (https://github.com/mattpocock/skills/tree/main/tdd).
+description: "Test-driven development with the red-green-refactor loop. Use when the project has `principles.tdd: true` in `.specs/config.yaml`, when implementing tasks from `.specs/<feature>/tasks.md`, or when the user mentions TDD, red-green-refactor, test-first, or integration-style tests. Adapted from Matt Pocock's TDD skill (https://github.com/mattpocock/skills/tree/main/tdd)."
 ---
 
 # Test-Driven Development
